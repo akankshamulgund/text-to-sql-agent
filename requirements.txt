@@ -1,5 +1,7 @@
 duckdb
 sqlglot
 streamlit
+plotly
 pandas
 python-dotenv
+pytest
