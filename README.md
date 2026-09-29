@@ -47,4 +47,8 @@ Placeholder for the evaluation accuracy table.
 
 ## How to Run
 
-Placeholder for local setup and Streamlit launch instructions.
+Create the virtual environment, install the dependencies, and start the dashboard:
+
+```bash
+streamlit run app/main.py
+```
