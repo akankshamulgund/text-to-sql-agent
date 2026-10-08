@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from charts import (
     orders_by_priority,
+    result_chart,
     revenue_by_region,
     revenue_over_time,
     top_customers,
@@ -22,13 +23,46 @@ from queries import (
     revenue_by_region as query_revenue_by_region,
     top_customers as query_top_customers,
 )
+from agents.sql_agent import answer_question
 
 
 st.set_page_config(page_title="AI Analytics Dashboard", layout="wide")
 
 st.title("AI Analytics Dashboard")
 st.subheader("Ask your data")
-st.text_input("Ask a business question", placeholder="Coming soon", disabled=True)
+with st.form("ask_your_data", clear_on_submit=False):
+    question = st.text_input("Ask a business question", placeholder="e.g. Which region had the highest revenue?")
+    ask_submitted = st.form_submit_button("Ask")
+
+if ask_submitted:
+    if not question.strip():
+        st.warning("Enter a question about your data.")
+    else:
+        with st.spinner("Analyzing your question..."):
+            st.session_state["sql_agent_result"] = answer_question(question.strip())
+
+agent_result = st.session_state.get("sql_agent_result")
+if agent_result:
+    if agent_result["error"]:
+        st.error(agent_result["error"])
+    if agent_result["answer"]:
+        st.markdown(agent_result["answer"])
+    if agent_result["dataframe"] is not None:
+        st.dataframe(agent_result["dataframe"], width="stretch", hide_index=True)
+        chart = result_chart(agent_result["dataframe"])
+        if chart is not None:
+            st.plotly_chart(chart, width="stretch")
+    with st.expander("Show agent steps"):
+        for trace in agent_result["steps"]:
+            st.markdown(
+                f"**Step {trace['step']}: {trace['tool_name']}** "
+                f"({trace['seconds']:.2f}s)"
+            )
+            st.write("Arguments:", trace["arguments"])
+            st.write("Result:", trace["result_summary"])
+        if agent_result["sql"]:
+            st.markdown("**Final SQL**")
+            st.code(agent_result["sql"], language="sql")
 
 minimum_date, maximum_date = date_bounds()
 with st.sidebar:

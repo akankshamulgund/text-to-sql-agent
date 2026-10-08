@@ -5,3 +5,4 @@ plotly
 pandas
 python-dotenv
 pytest
+openai
