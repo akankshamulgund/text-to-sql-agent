@@ -23,10 +23,15 @@ from queries import (
     revenue_by_region as query_revenue_by_region,
     top_customers as query_top_customers,
 )
-from agents.sql_agent import answer_question
+from agents.pipeline import run_pipeline
 
 
 st.set_page_config(page_title="AI Analytics Dashboard", layout="wide")
+
+with st.sidebar:
+    st.header("Agent pipeline")
+    schema_agent_enabled = st.toggle("Schema agent", value=True)
+    validator_enabled = st.toggle("Validator agent", value=True)
 
 st.title("AI Analytics Dashboard")
 st.subheader("Ask your data")
@@ -39,8 +44,14 @@ if ask_submitted:
         st.warning("Enter a question about your data.")
     else:
         with st.spinner("Analyzing your question..."):
-            st.session_state["sql_agent_result"] = answer_question(
-                question.strip(), max_steps=5
+            st.session_state["sql_agent_result"] = run_pipeline(
+                question.strip(),
+                {
+                    "schema_agent": schema_agent_enabled,
+                    "validator": validator_enabled,
+                    "max_validator_retries": 2,
+                    "max_steps": 5,
+                },
             )
 
 agent_result = st.session_state.get("sql_agent_result")
@@ -55,6 +66,13 @@ if agent_result:
         if chart is not None:
             st.plotly_chart(chart, width="stretch")
     with st.expander("Show agent steps"):
+        for trace in agent_result.get("agents_trace", []):
+            st.markdown(
+                f"**{trace['agent_name']}** ({trace['seconds']:.2f}s, "
+                f"{trace['llm_calls_used']} LLM call(s))"
+            )
+            st.write("Input:", trace["input_summary"])
+            st.write("Output:", trace["output_summary"])
         for trace in agent_result["steps"]:
             st.markdown(
                 f"**Step {trace['step']}: {trace['tool_name']}** "

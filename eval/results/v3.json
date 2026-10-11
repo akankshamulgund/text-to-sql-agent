@@ -1,0 +1,131 @@
+{
+  "config": "v3",
+  "config_options": {
+    "schema_agent": true,
+    "validator": true,
+    "max_validator_retries": 2
+  },
+  "accuracy_overall": {
+    "correct": 4,
+    "total": 5,
+    "accuracy": 0.8
+  },
+  "accuracy_by_difficulty": {
+    "easy": {
+      "correct": 2,
+      "total": 2,
+      "accuracy": 1.0
+    },
+    "hard": {
+      "correct": 0,
+      "total": 1,
+      "accuracy": 0.0
+    },
+    "medium": {
+      "correct": 2,
+      "total": 2,
+      "accuracy": 1.0
+    }
+  },
+  "average_llm_calls_per_question": 3.6,
+  "average_seconds_per_question": 7.961208040080964,
+  "failure_categories": {
+    "agent_error": 1
+  },
+  "results": [
+    {
+      "id": "customer_count",
+      "question": "How many customers are there?",
+      "difficulty": "easy",
+      "gold_sql": "SELECT COUNT(*) AS customer_count FROM customer",
+      "sql": "SELECT COUNT(*) AS customer_count FROM customer",
+      "answer": "There are 15,000 customers.",
+      "accuracy": true,
+      "failure_category": null,
+      "error": null,
+      "llm_calls": 5,
+      "seconds": 3.6556045999750495,
+      "agents_used": [
+        "schema_agent",
+        "sql_agent",
+        "validator_agent"
+      ],
+      "completed": true
+    },
+    {
+      "id": "revenue_by_region",
+      "question": "What is the total discounted line-item revenue by region?",
+      "difficulty": "medium",
+      "gold_sql": "SELECT r.r_name AS region, SUM(l.l_extendedprice * (1 - l.l_discount)) AS revenue FROM lineitem l JOIN orders o ON l.l_orderkey = o.o_orderkey JOIN customer c ON o.o_custkey = c.c_custkey JOIN nation n ON c.c_nationkey = n.n_nationkey JOIN region r ON n.n_regionkey = r.r_regionkey GROUP BY r.r_name ORDER BY revenue DESC",
+      "sql": "SELECT r.r_name AS region,\n       SUM(l.l_extendedprice * (1 - l.l_discount)) AS total_discounted_revenue\nFROM lineitem l\nJOIN orders o ON l.l_orderkey = o.o_orderkey\nJOIN customer c ON o.o_custkey = c.c_custkey\nJOIN nation n ON c.c_nationkey = n.n_nationkey\nJOIN region r ON n.n_regionkey = r.r_regionkey\nGROUP BY r.r_name\nORDER BY total_discounted_revenue DESC;",
+      "answer": "The total discounted revenue for each region is computed as the sum of the extended price minus the discount for every line item associated with orders placed by customers in that region.\n\n<sql>\nSELECT r.r_name AS region,\n       SUM(l.l_extendedprice * (1 - l.l_discount)) AS total_discounted_revenue\nFROM lineitem l\nJOIN orders o ON l.l_orderkey = o.o_orderkey\nJOIN customer c ON o.o_custkey = c.c_custkey\nJOIN nation n ON c.c_nationkey = n.n_nationkey\nJOIN region r ON n.n_regionkey = r.r_regionkey\nGROUP BY r.r_name\nORDER BY total_discounted_revenue DESC;\n</sql>",
+      "accuracy": true,
+      "failure_category": null,
+      "error": null,
+      "llm_calls": 4,
+      "seconds": 3.618966600159183,
+      "agents_used": [
+        "schema_agent",
+        "sql_agent",
+        "validator_agent"
+      ],
+      "completed": true
+    },
+    {
+      "id": "monthly_orders_1995",
+      "question": "Show monthly order counts for 1995",
+      "difficulty": "easy",
+      "gold_sql": "SELECT DATE_TRUNC('month', o_orderdate)::DATE AS month, COUNT(*) AS order_count FROM orders WHERE o_orderdate >= DATE '1995-01-01' AND o_orderdate < DATE '1996-01-01' GROUP BY 1 ORDER BY 1",
+      "sql": "SELECT DATE_TRUNC('month', o_orderdate) AS month,\n       COUNT(*) AS order_count\nFROM orders\nWHERE EXTRACT(YEAR FROM o_orderdate) = 1995\nGROUP BY month\nORDER BY month;",
+      "answer": "The query returned the monthly order counts for 1995.\n\n<sql>\nSELECT DATE_TRUNC('month', o_orderdate) AS month,\n       COUNT(*) AS order_count\nFROM orders\nWHERE EXTRACT(YEAR FROM o_orderdate) = 1995\nGROUP BY month\nORDER BY month;\n</sql>",
+      "accuracy": true,
+      "failure_category": null,
+      "error": null,
+      "llm_calls": 4,
+      "seconds": 15.216902800137177,
+      "agents_used": [
+        "schema_agent",
+        "sql_agent",
+        "validator_agent"
+      ],
+      "completed": true
+    },
+    {
+      "id": "supplier_distinct_parts",
+      "question": "Which supplier supplies the most distinct parts?",
+      "difficulty": "hard",
+      "gold_sql": "SELECT s.s_suppkey, s.s_name, COUNT(DISTINCT ps.ps_partkey) AS distinct_parts FROM supplier s JOIN partsupp ps ON s.s_suppkey = ps.ps_suppkey GROUP BY s.s_suppkey, s.s_name ORDER BY distinct_parts DESC, s.s_suppkey LIMIT 1",
+      "sql": null,
+      "answer": "I couldn't complete that analysis. Please try again.",
+      "accuracy": false,
+      "failure_category": "agent_error",
+      "error": "The SQL agent could not complete the request: LLM request failed (HTTP 400).",
+      "llm_calls": 1,
+      "seconds": 14.43693620013073,
+      "agents_used": [
+        "schema_agent",
+        "sql_agent"
+      ],
+      "completed": true
+    },
+    {
+      "id": "top_customers",
+      "question": "Which 5 customers have the highest total order value?",
+      "difficulty": "medium",
+      "gold_sql": "SELECT c.c_name, SUM(o.o_totalprice) AS total_order_value FROM customer c JOIN orders o ON c.c_custkey = o.o_custkey GROUP BY c.c_name ORDER BY total_order_value DESC LIMIT 5",
+      "sql": "SELECT\n    c.c_name,\n    SUM(o.o_totalprice) AS total_value\nFROM\n    orders o\nJOIN\n    customer c\n  ON\n    o.o_custkey = c.c_custkey\nGROUP BY\n    c.c_name\nORDER BY\n    total_value DESC\nLIMIT 5;",
+      "answer": "The five customers with the highest total order values are:\n\n| Customer Name          | Total Order Value |\n|------------------------|-------------------|\n| Customer#000008362     | 5,793,605.05 |\n| Customer#000006958     | 5,370,682.19 |\n| Customer#000009454     | 5,354,381.81 |\n| Customer#000000346     | 5,323,350.43 |\n| Customer#000010354     | 5,227,957.24 |\n\n**SQL used:**\n\n<sql>\nSELECT\n    c.c_name,\n    SUM(o.o_totalprice) AS total_value\nFROM\n    orders o\nJOIN\n    customer c\n  ON\n    o.o_custkey = c.c_custkey\nGROUP BY\n    c.c_name\nORDER BY\n    total_value DESC\nLIMIT 5;\n</sql>",
+      "accuracy": true,
+      "failure_category": null,
+      "error": null,
+      "llm_calls": 4,
+      "seconds": 2.877630000002682,
+      "agents_used": [
+        "schema_agent",
+        "sql_agent",
+        "validator_agent"
+      ],
+      "completed": true
+    }
+  ]
+}

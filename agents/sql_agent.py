@@ -14,30 +14,21 @@ from tools.query_tools import (
 
 
 SYSTEM_PROMPT = """You are a read-only DuckDB analytics SQL agent.
-The following schema was inspected from this database; treat these table and
-column names as verified. Do not spend calls re-describing it. Use list_tables,
-describe_table, or sample_rows when you need additional verification or data.
-
-customer(c_custkey, c_name, c_address, c_nationkey, c_phone, c_acctbal,
-c_mktsegment, c_comment)
-lineitem(l_orderkey, l_partkey, l_suppkey, l_linenumber, l_quantity,
-l_extendedprice, l_discount, l_tax, l_returnflag, l_linestatus, l_shipdate,
-l_commitdate, l_receiptdate, l_shipinstruct, l_shipmode, l_comment)
-nation(n_nationkey, n_name, n_regionkey, n_comment)
-orders(o_orderkey, o_custkey, o_orderstatus, o_totalprice, o_orderdate,
-o_orderpriority, o_clerk, o_shippriority, o_comment)
-part(p_partkey, p_name, p_mfgr, p_brand, p_type, p_size, p_container,
-p_retailprice, p_comment)
-partsupp(ps_partkey, ps_suppkey, ps_availqty, ps_supplycost, ps_comment)
-region(r_regionkey, r_name, r_comment)
-supplier(s_suppkey, s_name, s_address, s_nationkey, s_phone, s_acctbal,
-s_comment)
-
-Only use verified tables and columns; never guess names. Write DuckDB-compatible
+Use only verified tables and columns; never guess names. Write DuckDB-compatible
 SQL. Run the query, sanity-check its results, state any assumptions, and finish
 with the final SQL inside <sql> and </sql> tags. Use tool errors to correct
 queries. Do not claim results that were not returned by a tool. Keep answers
 concise."""
+
+
+DEFAULT_SCHEMA = """customer(c_custkey, c_name, c_address, c_nationkey, c_phone, c_acctbal, c_mktsegment, c_comment)
+lineitem(l_orderkey, l_partkey, l_suppkey, l_linenumber, l_quantity, l_extendedprice, l_discount, l_tax, l_returnflag, l_linestatus, l_shipdate, l_commitdate, l_receiptdate, l_shipinstruct, l_shipmode, l_comment)
+nation(n_nationkey, n_name, n_regionkey, n_comment)
+orders(o_orderkey, o_custkey, o_orderstatus, o_totalprice, o_orderdate, o_orderpriority, o_clerk, o_shippriority, o_comment)
+part(p_partkey, p_name, p_mfgr, p_brand, p_type, p_size, p_container, p_retailprice, p_comment)
+partsupp(ps_partkey, ps_suppkey, ps_availqty, ps_supplycost, ps_comment)
+region(r_regionkey, r_name, r_comment)
+supplier(s_suppkey, s_name, s_address, s_nationkey, s_phone, s_acctbal, s_comment)"""
 
 
 TOOLS = [
@@ -127,22 +118,34 @@ def _empty_result(error=None, answer=""):
         "sql": None,
         "dataframe": None,
         "steps": [],
+        "llm_calls": 0,
         "error": error,
     }
 
 
-def answer_question(question, max_steps=8):
+def answer_question(question, max_steps=8, schema_summary=None, feedback=None):
     """Run a bounded tool-calling loop and return answer, SQL, data, and trace."""
     result = _empty_result()
     try:
+        verified_schema = schema_summary or DEFAULT_SCHEMA
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": question},
+            {
+                "role": "system",
+                "content": f"{SYSTEM_PROMPT}\n\nVerified schema:\n{verified_schema}",
+            },
+            {
+                "role": "user",
+                "content": question
+                if not feedback
+                else f"{question}\n\nValidator feedback to address: {feedback}",
+            },
         ]
         successful_sql = None
         dataframe = None
+        llm_calls = 0
 
         for step_number in range(1, max_steps + 1):
+            llm_calls += 1
             message = chat(messages, tools=TOOLS)
             content = _value(message, "content") or ""
             tool_calls = _value(message, "tool_calls") or []
@@ -167,6 +170,7 @@ def answer_question(question, max_steps=8):
                     sql=_extract_sql(content) or successful_sql,
                     dataframe=dataframe,
                     steps=result["steps"],
+                    llm_calls=llm_calls,
                     error=None,
                 )
                 return result
@@ -217,6 +221,7 @@ def answer_question(question, max_steps=8):
             answer="I couldn't complete the analysis within the allowed number of steps.",
             sql=successful_sql,
             dataframe=dataframe,
+            llm_calls=llm_calls,
             error=f"Maximum agent steps reached ({max_steps}).",
         )
         return result

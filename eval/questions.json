@@ -1,0 +1,32 @@
+[
+  {
+    "id": "customer_count",
+    "question": "How many customers are there?",
+    "difficulty": "easy",
+    "gold_sql": "SELECT COUNT(*) AS customer_count FROM customer"
+  },
+  {
+    "id": "revenue_by_region",
+    "question": "What is the total discounted line-item revenue by region?",
+    "difficulty": "medium",
+    "gold_sql": "SELECT r.r_name AS region, SUM(l.l_extendedprice * (1 - l.l_discount)) AS revenue FROM lineitem l JOIN orders o ON l.l_orderkey = o.o_orderkey JOIN customer c ON o.o_custkey = c.c_custkey JOIN nation n ON c.c_nationkey = n.n_nationkey JOIN region r ON n.n_regionkey = r.r_regionkey GROUP BY r.r_name ORDER BY revenue DESC"
+  },
+  {
+    "id": "top_customers",
+    "question": "Which 5 customers have the highest total order value?",
+    "difficulty": "medium",
+    "gold_sql": "SELECT c.c_name, SUM(o.o_totalprice) AS total_order_value FROM customer c JOIN orders o ON c.c_custkey = o.o_custkey GROUP BY c.c_name ORDER BY total_order_value DESC LIMIT 5"
+  },
+  {
+    "id": "monthly_orders_1995",
+    "question": "Show monthly order counts for 1995",
+    "difficulty": "easy",
+    "gold_sql": "SELECT DATE_TRUNC('month', o_orderdate)::DATE AS month, COUNT(*) AS order_count FROM orders WHERE o_orderdate >= DATE '1995-01-01' AND o_orderdate < DATE '1996-01-01' GROUP BY 1 ORDER BY 1"
+  },
+  {
+    "id": "supplier_distinct_parts",
+    "question": "Which supplier supplies the most distinct parts?",
+    "difficulty": "hard",
+    "gold_sql": "SELECT s.s_suppkey, s.s_name, COUNT(DISTINCT ps.ps_partkey) AS distinct_parts FROM supplier s JOIN partsupp ps ON s.s_suppkey = ps.ps_suppkey GROUP BY s.s_suppkey, s.s_name ORDER BY distinct_parts DESC, s.s_suppkey LIMIT 1"
+  }
+]
