@@ -39,7 +39,9 @@ if ask_submitted:
         st.warning("Enter a question about your data.")
     else:
         with st.spinner("Analyzing your question..."):
-            st.session_state["sql_agent_result"] = answer_question(question.strip())
+            st.session_state["sql_agent_result"] = answer_question(
+                question.strip(), max_steps=5
+            )
 
 agent_result = st.session_state.get("sql_agent_result")
 if agent_result:

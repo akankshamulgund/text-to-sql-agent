@@ -31,6 +31,7 @@ def chat(messages, tools=None):
                 model=model,
                 messages=messages,
                 tools=tools,
+                max_tokens=512,
             )
             return response.choices[0].message
         except Exception as error:

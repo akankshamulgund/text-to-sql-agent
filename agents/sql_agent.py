@@ -14,12 +14,30 @@ from tools.query_tools import (
 
 
 SYSTEM_PROMPT = """You are a read-only DuckDB analytics SQL agent.
-Explore the schema with list_tables, describe_table, and sample_rows before
-writing SQL. Use only tables and columns you have inspected; never guess column
-names. Write DuckDB-compatible SQL. After running a query, sanity-check its
-results, state any assumptions, and finish with the final SQL inside <sql> and
-</sql> tags. If a tool returns an error, use it to correct your query. Do not
-claim results that were not returned by a tool."""
+The following schema was inspected from this database; treat these table and
+column names as verified. Do not spend calls re-describing it. Use list_tables,
+describe_table, or sample_rows when you need additional verification or data.
+
+customer(c_custkey, c_name, c_address, c_nationkey, c_phone, c_acctbal,
+c_mktsegment, c_comment)
+lineitem(l_orderkey, l_partkey, l_suppkey, l_linenumber, l_quantity,
+l_extendedprice, l_discount, l_tax, l_returnflag, l_linestatus, l_shipdate,
+l_commitdate, l_receiptdate, l_shipinstruct, l_shipmode, l_comment)
+nation(n_nationkey, n_name, n_regionkey, n_comment)
+orders(o_orderkey, o_custkey, o_orderstatus, o_totalprice, o_orderdate,
+o_orderpriority, o_clerk, o_shippriority, o_comment)
+part(p_partkey, p_name, p_mfgr, p_brand, p_type, p_size, p_container,
+p_retailprice, p_comment)
+partsupp(ps_partkey, ps_suppkey, ps_availqty, ps_supplycost, ps_comment)
+region(r_regionkey, r_name, r_comment)
+supplier(s_suppkey, s_name, s_address, s_nationkey, s_phone, s_acctbal,
+s_comment)
+
+Only use verified tables and columns; never guess names. Write DuckDB-compatible
+SQL. Run the query, sanity-check its results, state any assumptions, and finish
+with the final SQL inside <sql> and </sql> tags. Use tool errors to correct
+queries. Do not claim results that were not returned by a tool. Keep answers
+concise."""
 
 
 TOOLS = [
@@ -28,7 +46,7 @@ TOOLS = [
         "function": {
             "name": "list_tables",
             "description": "List available database tables and their row counts.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
+            "parameters": {"type": "object", "properties": {}},
         },
     },
     {
@@ -52,7 +70,7 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
-                    "n": {"type": "integer", "default": 5},
+                    "n": {"type": "integer"},
                 },
                 "required": ["name"],
             },
@@ -163,6 +181,8 @@ def answer_question(question, max_steps=8):
                     tool_function = TOOL_FUNCTIONS.get(tool_name)
                     if tool_function is None:
                         tool_result = {"ok": False, "error": f"Unknown tool: {tool_name}"}
+                    elif tool_name == "list_tables":
+                        tool_result = tool_function()
                     else:
                         tool_result = tool_function(**arguments)
                 except Exception as error:
