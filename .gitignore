@@ -1,5 +1,8 @@
 .venv/
 .env
+.streamlit/secrets.toml
 data/*.duckdb
 data/pins.json
+streamlit.stdout.log
+streamlit.stderr.log
 __pycache__/

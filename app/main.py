@@ -7,6 +7,7 @@ import streamlit as st
 # Make project-level packages available when Streamlit runs this file directly.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.bootstrap import ensure_database
 from charts import (
     orders_by_priority,
     render_chart,
@@ -27,10 +28,12 @@ from agents.pipeline import run_pipeline
 from app.pins import add_pin, list_pins, remove_pin, run_pinned_query
 
 
+ensure_database()
 st.set_page_config(page_title="AI Analytics Dashboard", layout="wide")
 
 with st.sidebar:
     st.header("Agent pipeline")
+    st.caption("Demo uses public TPC-H sample data only.")
     planner_enabled = st.toggle("Planner", value=True)
     schema_agent_enabled = st.toggle("Schema agent", value=True)
     validator_enabled = st.toggle("Validator agent", value=True)
@@ -46,7 +49,10 @@ with st.form("ask_your_data", clear_on_submit=False):
 if ask_submitted:
     if not question.strip():
         st.warning("Enter a question about your data.")
+    elif st.session_state.get("questions_used", 0) >= 10:
+        st.info("This demo allows 10 questions per session. Start a new session to ask more.")
     else:
+        st.session_state["questions_used"] = st.session_state.get("questions_used", 0) + 1
         pipeline_config = {
             "planner": planner_enabled,
             "schema_agent": schema_agent_enabled,

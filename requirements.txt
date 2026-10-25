@@ -1,8 +1,8 @@
-duckdb
-sqlglot
-streamlit
-plotly
-pandas
-python-dotenv
-pytest
-openai
+duckdb==1.5.6
+sqlglot==30.20.0
+streamlit==1.64.0
+plotly==7.1.0
+pandas==3.0.6
+python-dotenv==1.2.3
+pytest==9.1.1
+openai==3.26.1

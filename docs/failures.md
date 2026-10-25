@@ -1,31 +1,66 @@
-# Smoke-Test Failure Analysis
+# Evaluation Failure Analysis
 
-The v1/v2/v3 comparison used the same five questions and model (`openai/gpt-oss-20b`). It is a small smoke set, not a general accuracy estimate.
+This analysis uses the seven failed records across the result files currently in `eval/results` (`v1`, `v2`, and `v3`). The benchmark has five public TPC-H questions per configuration.
 
-| Config | Accurate | Avg. LLM calls/question | Avg. seconds/question |
-| --- | ---: | ---: | ---: |
-| v1 (schema, no validator) | 3/5 (60%) | 3.00 | 3.68 |
-| v2 (no schema, validator) | 2/5 (40%) | 3.00 | 8.43 |
-| v3 (schema and validator) | 3/5 (60%) | 3.60 | 12.39 |
+| Failure type | Count |
+| --- | ---: |
+| Wrong join | 1 |
+| Wrong filter | 0 |
+| Wrong column or output shape | 3 |
+| Ambiguous question | 0 |
+| Timeout | 0 |
+| Other | 3 |
 
-## Failed Questions
+## Wrong join (1)
 
-### v1
+**Question:** Which supplier supplies the most distinct parts? (v3)
 
-- **Top five customers:** The computed top five and totals were right, but generated SQL included `c_custkey` while the gold projection contains only customer name and total value. The evaluator compares result shape strictly, so this is an execution mismatch rather than a wrong ranking.
-- **Supplier with most distinct parts:** The query sorted by count only. Many suppliers tie at 80 parts; the gold SQL breaks ties by ascending `s_suppkey`, while the generated query returned supplier 373. Local DuckDB results confirm suppliers 1 through 12 already share the maximum count of 80.
+**Wrong SQL:** `SELECT supplier.s_suppkey, COUNT(DISTINCT partsupp.ps_partkey) AS distinct_parts FROM supplier LEFT JOIN partsupp ON supplier.s_suppkey = partsupp.ps_suppkey GROUP BY supplier.s_suppkey ORDER BY distinct_parts DESC LIMIT 1`
 
-### v2
+**Correct SQL:** `SELECT s.s_suppkey, s.s_name, COUNT(DISTINCT ps.ps_partkey) AS distinct_parts FROM supplier s JOIN partsupp ps ON s.s_suppkey = ps.ps_suppkey GROUP BY s.s_suppkey, s.s_name ORDER BY distinct_parts DESC, s.s_suppkey LIMIT 1`
 
-- **Top five customers:** Same projection mismatch as v1: it returned the extra customer key, though the ranking and totals matched.
-- **Monthly 1995 orders:** The query grouped by separate `yr` and `mon` columns instead of a single month column. The year filter and monthly counts were conceptually aligned, but the output schema differed from gold.
-- **Supplier with most distinct parts:** It returned supplier 551 with 80 parts. The gold tie-break selects the lowest supplier key; the generated query omitted that tie-break and did not return the identifying key.
+The query used a `LEFT JOIN` and did not return the supplier name or apply the deterministic tie-break. A validator check for requested identity columns and stable ordering after aggregate rankings would help.
 
-### v3
+## Wrong filter (0)
 
-- **Monthly 1995 orders:** The agent failed before producing SQL with HTTP 400, so this is an API/tool-loop failure, not a demonstrated SQL error. The saved trace had one schema call followed by the failed SQL-agent request; the provider response did not include a diagnostic body.
-- **Supplier with most distinct parts:** The query used a LEFT JOIN, grouped only by supplier key, and ordered only by count. Because many suppliers tie at 80, it returned supplier 281 rather than applying the gold lowest-key tie-break. The join still returned the correct maximum count, but the selected supplier was nondeterministic relative to the benchmark.
+No recorded failure was a wrong-filter error. The 1995 monthly query used a valid year condition; its mismatch was the returned column shape.
 
-## Interpretation
+## Wrong column or output shape (3)
 
-On this five-question set, the validator-only configuration (v2) did not improve accuracy over v1 and took substantially longer; average recorded model-call counts were equal at 3.0. Enabling both agents (v3) matched v1 accuracy, increased calls to 3.6/question, and had the highest latency. These small results do not establish that validation is ineffective generally; they show this validator did not reliably fix projection, output-shape, or deterministic tie-break issues in this run.
+**Question:** Which 5 customers have the highest total order value? (v1 and v2)
+
+**Wrong SQL:** `SELECT c.c_custkey, c.c_name, SUM(o.o_totalprice) AS total_order_value FROM customer c JOIN orders o ON c.c_custkey = o.o_custkey GROUP BY c.c_custkey, c.c_name ORDER BY total_order_value DESC LIMIT 5`
+
+**Correct SQL:** `SELECT c.c_name, SUM(o.o_totalprice) AS total_order_value FROM customer c JOIN orders o ON c.c_custkey = o.o_custkey GROUP BY c.c_name ORDER BY total_order_value DESC LIMIT 5`
+
+**Question:** Show monthly order counts for 1995 (v2)
+
+**Wrong SQL:** `SELECT EXTRACT(YEAR FROM o_orderdate) AS yr, EXTRACT(MONTH FROM o_orderdate) AS mon, COUNT(*) AS order_count FROM orders WHERE EXTRACT(YEAR FROM o_orderdate) = 1995 GROUP BY yr, mon ORDER BY mon`
+
+**Correct SQL:** `SELECT DATE_TRUNC('month', o_orderdate)::DATE AS month, COUNT(*) AS order_count FROM orders WHERE o_orderdate >= DATE '1995-01-01' AND o_orderdate < DATE '1996-01-01' GROUP BY 1 ORDER BY 1`
+
+These queries were close logically but returned extra columns or a different month representation. The evaluator compares rows and columns, so the validator should compare the final projection directly with the wording of the question.
+
+## Ambiguous question (0)
+
+No evaluation record was routed as ambiguous. The planner requests clarification when a required metric, time range, or ranking rule has no sensible default.
+
+## Timeout (0)
+
+No recorded failure was a database timeout. Query execution has a 10-second interrupt guard.
+
+## Other (3)
+
+**Question:** Which supplier supplies the most distinct parts? (v1 and v2)
+
+**Wrong SQL:** `SELECT supplier.s_name, COUNT(DISTINCT partsupp.ps_partkey) AS distinct_parts FROM partsupp JOIN supplier ON partsupp.ps_suppkey = supplier.s_suppkey GROUP BY supplier.s_name ORDER BY distinct_parts DESC LIMIT 1`
+
+**Correct SQL:** `SELECT s.s_suppkey, s.s_name, COUNT(DISTINCT ps.ps_partkey) AS distinct_parts FROM supplier s JOIN partsupp ps ON s.s_suppkey = ps.ps_suppkey GROUP BY s.s_suppkey, s.s_name ORDER BY distinct_parts DESC, s.s_suppkey LIMIT 1`
+
+**Question:** Show monthly order counts for 1995 (v3)
+
+**Wrong SQL:** No SQL was produced; the SQL agent returned HTTP 400.
+
+**Correct SQL:** `SELECT DATE_TRUNC('month', o_orderdate)::DATE AS month, COUNT(*) AS order_count FROM orders WHERE o_orderdate >= DATE '1995-01-01' AND o_orderdate < DATE '1996-01-01' GROUP BY 1 ORDER BY 1`
+
+Two supplier failures omitted the tie-break for suppliers tied at the maximum count. The remaining failure was an upstream agent request error. Deterministic ranking validation and retry telemetry for provider errors would address these cases.
