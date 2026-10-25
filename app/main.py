@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from charts import (
     orders_by_priority,
-    result_chart,
+    render_chart,
     revenue_by_region,
     revenue_over_time,
     top_customers,
@@ -24,6 +24,7 @@ from queries import (
     top_customers as query_top_customers,
 )
 from agents.pipeline import run_pipeline
+from app.pins import add_pin, list_pins, remove_pin, run_pinned_query
 
 
 st.set_page_config(page_title="AI Analytics Dashboard", layout="wide")
@@ -32,6 +33,8 @@ with st.sidebar:
     st.header("Agent pipeline")
     schema_agent_enabled = st.toggle("Schema agent", value=True)
     validator_enabled = st.toggle("Validator agent", value=True)
+    insight_agent_enabled = st.toggle("Insight agent", value=True)
+    visualization_agent_enabled = st.toggle("Visualization agent", value=True)
 
 st.title("AI Analytics Dashboard")
 st.subheader("Ask your data")
@@ -49,10 +52,13 @@ if ask_submitted:
                 {
                     "schema_agent": schema_agent_enabled,
                     "validator": validator_enabled,
+                    "insight": insight_agent_enabled,
+                    "viz_agent": visualization_agent_enabled,
                     "max_validator_retries": 2,
                     "max_steps": 5,
                 },
             )
+            st.session_state["last_question"] = question.strip()
 
 agent_result = st.session_state.get("sql_agent_result")
 if agent_result:
@@ -60,11 +66,31 @@ if agent_result:
         st.error(agent_result["error"])
     if agent_result["answer"]:
         st.markdown(agent_result["answer"])
+    if agent_result.get("insight"):
+        st.markdown("**Insight**")
+        st.markdown(agent_result["insight"])
+    if agent_result.get("sql") and not agent_result.get("error"):
+        if st.button("Pin to dashboard", key="pin_current_answer"):
+            chart_spec = agent_result.get("chart_spec") or {
+                "type": "table",
+                "x": None,
+                "y": None,
+                "color": None,
+                "title": "Query result",
+            }
+            add_pin(
+                st.session_state.get("last_question", ""),
+                agent_result["sql"],
+                chart_spec,
+            )
+            st.success("Pinned to dashboard.")
     if agent_result["dataframe"] is not None:
-        st.dataframe(agent_result["dataframe"], width="stretch", hide_index=True)
-        chart = result_chart(agent_result["dataframe"])
+        chart_spec = agent_result.get("chart_spec")
+        chart = render_chart(chart_spec, agent_result["dataframe"]) if chart_spec else None
         if chart is not None:
             st.plotly_chart(chart, width="stretch")
+        if not chart_spec or chart_spec.get("type") != "table":
+            st.dataframe(agent_result["dataframe"], width="stretch", hide_index=True)
     with st.expander("Show agent steps"):
         for trace in agent_result.get("agents_trace", []):
             st.markdown(
@@ -133,4 +159,34 @@ st.subheader("Recent orders")
 st.dataframe(recent_orders(start_date, end_date), width="stretch", hide_index=True)
 
 st.subheader("Pinned tiles")
-st.caption("Pinned dashboard tiles will appear here in a future version.")
+pinned_items = list_pins()
+if not pinned_items:
+    st.caption("Pinned dashboard tiles will appear here.")
+for offset in range(0, len(pinned_items), 2):
+    tile_columns = st.columns(2)
+    for column, pin in zip(tile_columns, pinned_items[offset:offset + 2]):
+        with column:
+            with st.container(border=True):
+                chart_spec = pin.get("chart_spec") or {
+                    "type": "table",
+                    "title": pin["question"],
+                }
+                st.markdown(f"**{chart_spec.get('title') or pin['question']}**")
+                st.caption(pin["question"])
+                pinned_result = run_pinned_query(pin["sql"])
+                if not pinned_result.get("ok"):
+                    st.warning(
+                        f"Pinned query unavailable: {pinned_result.get('error', 'Query failed.')}"
+                    )
+                else:
+                    chart = render_chart(chart_spec, pinned_result["dataframe"])
+                    if chart is not None:
+                        st.plotly_chart(
+                            chart,
+                            width="stretch",
+                            key=f"pin_chart_{pin['id']}",
+                        )
+                if st.button("Remove", key=f"remove_pin_{pin['id']}"):
+                    remove_pin(pin["id"])
+                    run_pinned_query.clear()
+                    st.rerun()

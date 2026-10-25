@@ -1,6 +1,7 @@
 import argparse
 import json
 import math
+import os
 import sys
 import time
 from datetime import date, datetime
@@ -24,6 +25,8 @@ CONFIGS = {
 }
 QUESTIONS_PATH = PROJECT_ROOT / "eval" / "questions.json"
 RESULTS_DIR = PROJECT_ROOT / "eval" / "results"
+RUNNER_VERSION = 2
+MODEL_ID = os.getenv("LLM_MODEL", "unknown")
 
 
 def _normalise_value(value):
@@ -108,6 +111,8 @@ def _summary(config_name, records):
             failures[category] = failures.get(category, 0) + 1
     return {
         "config": config_name,
+        "runner_version": RUNNER_VERSION,
+        "model": MODEL_ID,
         "config_options": CONFIGS[config_name],
         "accuracy_overall": {"correct": correct, "total": total, "accuracy": correct / total if total else 0.0},
         "accuracy_by_difficulty": by_difficulty,
@@ -132,7 +137,10 @@ def run(config_name, limit=None, resume=False, delay=2.0):
     completed_ids = set()
     if resume and result_path.exists():
         previous = json.loads(result_path.read_text(encoding="utf-8"))
-        records = previous.get("results", [])
+        if previous.get("runner_version") == RUNNER_VERSION and previous.get("model") == MODEL_ID:
+            records = previous.get("results", [])
+        else:
+            print("Existing checkpoint uses a different runner version or model; starting fresh.")
         current_gold = {item["id"]: item["gold_sql"] for item in questions}
         for record in records:
             if record.get("completed") and record.get("gold_sql") == current_gold.get(record["id"]):

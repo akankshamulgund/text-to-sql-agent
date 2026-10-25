@@ -1,4 +1,5 @@
 .venv/
 .env
 data/*.duckdb
+data/pins.json
 __pycache__/

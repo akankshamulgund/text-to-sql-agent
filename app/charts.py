@@ -1,5 +1,6 @@
 import plotly.express as px
 import pandas as pd
+import streamlit as st
 
 
 def revenue_over_time(dataframe):
@@ -73,3 +74,36 @@ def result_chart(dataframe):
         chart_data[label_column] = parsed_dates
         return px.line(chart_data, x=label_column, y=value_column, markers=True)
     return px.bar(dataframe, x=label_column, y=value_column)
+
+
+def render_chart(spec, dataframe):
+    """Render a validated chart spec; table and metric are rendered directly."""
+    if dataframe is None:
+        return None
+
+    chart_type = spec.get("type", "table")
+    title = spec.get("title") or "Query result"
+    if chart_type == "table":
+        st.dataframe(dataframe, width="stretch", hide_index=True)
+        return None
+    if chart_type == "metric":
+        column = spec.get("y")
+        value = dataframe[column].iloc[0] if column in dataframe and not dataframe.empty else "Not available"
+        if isinstance(value, (int, float)):
+            value = f"{value:,.2f}" if isinstance(value, float) else f"{value:,}"
+        st.metric(title, value)
+        return None
+
+    x = spec.get("x")
+    y = spec.get("y")
+    color = spec.get("color")
+    if chart_type == "line":
+        return px.line(dataframe, x=x, y=y, color=color, title=title, markers=True)
+    if chart_type == "pie":
+        return px.pie(dataframe, names=x, values=y, color=color, title=title)
+    if chart_type == "scatter":
+        return px.scatter(dataframe, x=x, y=y, color=color, title=title)
+    if chart_type == "bar":
+        return px.bar(dataframe, x=x, y=y, color=color, title=title)
+    st.dataframe(dataframe, width="stretch", hide_index=True)
+    return None

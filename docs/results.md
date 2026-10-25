@@ -2,4 +2,6 @@
 
 | Config | Execution accuracy | Avg. LLM calls/question | Avg. seconds/question | Failures |
 | --- | ---: | ---: | ---: | ---: |
-| v3 | 4/5 (80.0%) | 3.60 | 7.96 | 1 |
+| v1 | 3/5 (60.0%) | 3.00 | 3.68 | 2 |
+| v2 | 2/5 (40.0%) | 3.00 | 8.43 | 3 |
+| v3 | 3/5 (60.0%) | 3.60 | 12.39 | 2 |

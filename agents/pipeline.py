@@ -1,8 +1,10 @@
 import time
 
 from agents.schema_agent import get_relevant_schema_with_calls
+from agents.insight_agent import summarize
 from agents.sql_agent import answer_question
 from agents.validator_agent import validate
+from agents.viz_agent import choose_chart
 
 
 def _agent_trace(name, input_summary, output_summary, seconds, llm_calls):
@@ -23,6 +25,8 @@ def _result_template():
         "steps": [],
         "error": None,
         "llm_calls": 0,
+        "insight": None,
+        "chart_spec": None,
         "agents_used": [],
         "agents_trace": [],
     }
@@ -33,6 +37,8 @@ def run_pipeline(question, config=None):
     config = config or {}
     use_schema = bool(config.get("schema_agent", False))
     use_validator = bool(config.get("validator", False))
+    use_insight = bool(config.get("insight", False))
+    use_viz = bool(config.get("viz_agent", False))
     retries = max(0, int(config.get("max_validator_retries", 0)))
     max_steps = max(1, int(config.get("max_steps", 8)))
     result = _result_template()
@@ -113,5 +119,38 @@ def run_pipeline(question, config=None):
 
     if validation_failed:
         result["error"] = f"Validation failed after {attempts} attempt(s): {feedback}"
+
+    if result["error"] is None and result["dataframe"] is not None:
+        optional_agents = []
+        if use_insight:
+            optional_agents.append(("insight_agent", summarize))
+        if use_viz:
+            optional_agents.append(("viz_agent", choose_chart))
+
+        for agent_name, agent_function in optional_agents:
+            started = time.perf_counter()
+            output_summary = "Agent returned no output."
+            result["agents_used"].append(agent_name)
+            result["llm_calls"] += 1
+            try:
+                output = agent_function(question, result["sql"], result["dataframe"]) if agent_name == "insight_agent" else agent_function(question, result["dataframe"])
+                if agent_name == "insight_agent":
+                    result["insight"] = output
+                    output_summary = output[:180]
+                else:
+                    result["chart_spec"] = output
+                    output_summary = str(output)
+            except Exception as error:
+                output_summary = f"Unavailable ({type(error).__name__})."
+            result["agents_trace"].append(
+                _agent_trace(
+                    agent_name,
+                    question[:160],
+                    output_summary,
+                    time.perf_counter() - started,
+                    1,
+                )
+            )
+
     result["agents_used"] = list(dict.fromkeys(result["agents_used"]))
     return result

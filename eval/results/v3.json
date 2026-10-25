@@ -1,20 +1,22 @@
 {
   "config": "v3",
+  "runner_version": 2,
+  "model": "openai/gpt-oss-20b",
   "config_options": {
     "schema_agent": true,
     "validator": true,
     "max_validator_retries": 2
   },
   "accuracy_overall": {
-    "correct": 4,
+    "correct": 3,
     "total": 5,
-    "accuracy": 0.8
+    "accuracy": 0.6
   },
   "accuracy_by_difficulty": {
     "easy": {
-      "correct": 2,
+      "correct": 1,
       "total": 2,
-      "accuracy": 1.0
+      "accuracy": 0.5
     },
     "hard": {
       "correct": 0,
@@ -28,9 +30,10 @@
     }
   },
   "average_llm_calls_per_question": 3.6,
-  "average_seconds_per_question": 7.961208040080964,
+  "average_seconds_per_question": 12.387820019992068,
   "failure_categories": {
-    "agent_error": 1
+    "agent_error": 1,
+    "execution_mismatch": 1
   },
   "results": [
     {
@@ -38,13 +41,13 @@
       "question": "How many customers are there?",
       "difficulty": "easy",
       "gold_sql": "SELECT COUNT(*) AS customer_count FROM customer",
-      "sql": "SELECT COUNT(*) AS customer_count FROM customer",
-      "answer": "There are 15,000 customers.",
+      "sql": "SELECT COUNT(*) AS num_customers\nFROM customer;",
+      "answer": "The `customer` table contains **15,000** rows, indicating 15,000 customers.\n\n<sql>\nSELECT COUNT(*) AS num_customers\nFROM customer;\n</sql>",
       "accuracy": true,
       "failure_category": null,
       "error": null,
-      "llm_calls": 5,
-      "seconds": 3.6556045999750495,
+      "llm_calls": 4,
+      "seconds": 4.8904258999973536,
       "agents_used": [
         "schema_agent",
         "sql_agent",
@@ -57,13 +60,32 @@
       "question": "What is the total discounted line-item revenue by region?",
       "difficulty": "medium",
       "gold_sql": "SELECT r.r_name AS region, SUM(l.l_extendedprice * (1 - l.l_discount)) AS revenue FROM lineitem l JOIN orders o ON l.l_orderkey = o.o_orderkey JOIN customer c ON o.o_custkey = c.c_custkey JOIN nation n ON c.c_nationkey = n.n_nationkey JOIN region r ON n.n_regionkey = r.r_regionkey GROUP BY r.r_name ORDER BY revenue DESC",
-      "sql": "SELECT r.r_name AS region,\n       SUM(l.l_extendedprice * (1 - l.l_discount)) AS total_discounted_revenue\nFROM lineitem l\nJOIN orders o ON l.l_orderkey = o.o_orderkey\nJOIN customer c ON o.o_custkey = c.c_custkey\nJOIN nation n ON c.c_nationkey = n.n_nationkey\nJOIN region r ON n.n_regionkey = r.r_regionkey\nGROUP BY r.r_name\nORDER BY total_discounted_revenue DESC;",
-      "answer": "The total discounted revenue for each region is computed as the sum of the extended price minus the discount for every line item associated with orders placed by customers in that region.\n\n<sql>\nSELECT r.r_name AS region,\n       SUM(l.l_extendedprice * (1 - l.l_discount)) AS total_discounted_revenue\nFROM lineitem l\nJOIN orders o ON l.l_orderkey = o.o_orderkey\nJOIN customer c ON o.o_custkey = c.c_custkey\nJOIN nation n ON c.c_nationkey = n.n_nationkey\nJOIN region r ON n.n_regionkey = r.r_regionkey\nGROUP BY r.r_name\nORDER BY total_discounted_revenue DESC;\n</sql>",
+      "sql": "SELECT r.r_name AS region, SUM(l.l_extendedprice * (1 - l.l_discount)) AS total_discounted_revenue\nFROM lineitem l\nJOIN orders o ON l.l_orderkey = o.o_orderkey\nJOIN customer c ON o.o_custkey = c.c_custkey\nJOIN nation n ON c.c_nationkey = n.n_nationkey\nJOIN region r ON n.n_regionkey = r.r_regionkey\nGROUP BY r.r_name\nORDER BY total_discounted_revenue DESC;",
+      "answer": "The total discounted revenue for each region is calculated by applying the discount to each line\u2011item price and summing the result per region. The query below follows the verified join paths:\n\n```sql\nSELECT\n    r.r_name AS region,\n    SUM(l.l_extendedprice * (1 - l.l_discount)) AS total_discounted_revenue\nFROM lineitem l\nJOIN orders o ON l.l_orderkey = o.o_orderkey\nJOIN customer c ON o.o_custkey = c.c_custkey\nJOIN nation n ON c.c_nationkey = n.n_nationkey\nJOIN region r ON n.n_regionkey = r.r_regionkey\nGROUP BY r.r_name\nORDER BY total_discounted_revenue DESC;\n```",
       "accuracy": true,
       "failure_category": null,
       "error": null,
       "llm_calls": 4,
-      "seconds": 3.618966600159183,
+      "seconds": 19.468553100014105,
+      "agents_used": [
+        "schema_agent",
+        "sql_agent",
+        "validator_agent"
+      ],
+      "completed": true
+    },
+    {
+      "id": "top_customers",
+      "question": "Which 5 customers have the highest total order value?",
+      "difficulty": "medium",
+      "gold_sql": "SELECT c.c_name, SUM(o.o_totalprice) AS total_order_value FROM customer c JOIN orders o ON c.c_custkey = o.o_custkey GROUP BY c.c_name ORDER BY total_order_value DESC LIMIT 5",
+      "sql": "SELECT c.c_name,\n       SUM(o.o_totalprice) AS total_order_value\nFROM orders o\nJOIN customer c ON o.o_custkey = c.c_custkey\nGROUP BY c.c_name\nORDER BY total_order_value DESC\nLIMIT 5;",
+      "answer": "The five customers with the highest total order value are:\n\n| Rank | Customer Name          | Total Order Value |\n|------|------------------------|-------------------|\n| 1    | Customer#000008362     | 5,793,605.05      |\n| 2    | Customer#000006958     | 5,370,682.19      |\n| 3    | Customer#000009454     | 5,354,381.81      |\n| 4    | Customer#000000346     | 5,323,350.43      |\n| 5    | Customer#000010354     | 5,227,957.24      |\n\n**Query used**\n\n<sql>\nSELECT c.c_name,\n       SUM(o.o_totalprice) AS total_order_value\nFROM orders o\nJOIN customer c ON o.o_custkey = c.c_custkey\nGROUP BY c.c_name\nORDER BY total_order_value DESC\nLIMIT 5;\n</sql>",
+      "accuracy": true,
+      "failure_category": null,
+      "error": null,
+      "llm_calls": 5,
+      "seconds": 22.02623469987884,
       "agents_used": [
         "schema_agent",
         "sql_agent",
@@ -76,17 +98,16 @@
       "question": "Show monthly order counts for 1995",
       "difficulty": "easy",
       "gold_sql": "SELECT DATE_TRUNC('month', o_orderdate)::DATE AS month, COUNT(*) AS order_count FROM orders WHERE o_orderdate >= DATE '1995-01-01' AND o_orderdate < DATE '1996-01-01' GROUP BY 1 ORDER BY 1",
-      "sql": "SELECT DATE_TRUNC('month', o_orderdate) AS month,\n       COUNT(*) AS order_count\nFROM orders\nWHERE EXTRACT(YEAR FROM o_orderdate) = 1995\nGROUP BY month\nORDER BY month;",
-      "answer": "The query returned the monthly order counts for 1995.\n\n<sql>\nSELECT DATE_TRUNC('month', o_orderdate) AS month,\n       COUNT(*) AS order_count\nFROM orders\nWHERE EXTRACT(YEAR FROM o_orderdate) = 1995\nGROUP BY month\nORDER BY month;\n</sql>",
-      "accuracy": true,
-      "failure_category": null,
-      "error": null,
-      "llm_calls": 4,
-      "seconds": 15.216902800137177,
+      "sql": null,
+      "answer": "I couldn't complete that analysis. Please try again.",
+      "accuracy": false,
+      "failure_category": "agent_error",
+      "error": "The SQL agent could not complete the request: LLM request failed (HTTP 400).",
+      "llm_calls": 1,
+      "seconds": 11.989268800010905,
       "agents_used": [
         "schema_agent",
-        "sql_agent",
-        "validator_agent"
+        "sql_agent"
       ],
       "completed": true
     },
@@ -95,31 +116,13 @@
       "question": "Which supplier supplies the most distinct parts?",
       "difficulty": "hard",
       "gold_sql": "SELECT s.s_suppkey, s.s_name, COUNT(DISTINCT ps.ps_partkey) AS distinct_parts FROM supplier s JOIN partsupp ps ON s.s_suppkey = ps.ps_suppkey GROUP BY s.s_suppkey, s.s_name ORDER BY distinct_parts DESC, s.s_suppkey LIMIT 1",
-      "sql": null,
-      "answer": "I couldn't complete that analysis. Please try again.",
+      "sql": "SELECT supplier.s_suppkey, COUNT(DISTINCT partsupp.ps_partkey) AS distinct_parts\nFROM supplier\nLEFT JOIN partsupp\n  ON supplier.s_suppkey = partsupp.ps_suppkey\nGROUP BY supplier.s_suppkey\nORDER BY distinct_parts DESC\nLIMIT 1;",
+      "answer": "Supplier 281 supplies the most distinct parts, with 80 unique part IDs.\n\n<sql>\nSELECT supplier.s_suppkey, COUNT(DISTINCT partsupp.ps_partkey) AS distinct_parts\nFROM supplier\nLEFT JOIN partsupp\n  ON supplier.s_suppkey = partsupp.ps_suppkey\nGROUP BY supplier.s_suppkey\nORDER BY distinct_parts DESC\nLIMIT 1;\n</sql>",
       "accuracy": false,
-      "failure_category": "agent_error",
-      "error": "The SQL agent could not complete the request: LLM request failed (HTTP 400).",
-      "llm_calls": 1,
-      "seconds": 14.43693620013073,
-      "agents_used": [
-        "schema_agent",
-        "sql_agent"
-      ],
-      "completed": true
-    },
-    {
-      "id": "top_customers",
-      "question": "Which 5 customers have the highest total order value?",
-      "difficulty": "medium",
-      "gold_sql": "SELECT c.c_name, SUM(o.o_totalprice) AS total_order_value FROM customer c JOIN orders o ON c.c_custkey = o.o_custkey GROUP BY c.c_name ORDER BY total_order_value DESC LIMIT 5",
-      "sql": "SELECT\n    c.c_name,\n    SUM(o.o_totalprice) AS total_value\nFROM\n    orders o\nJOIN\n    customer c\n  ON\n    o.o_custkey = c.c_custkey\nGROUP BY\n    c.c_name\nORDER BY\n    total_value DESC\nLIMIT 5;",
-      "answer": "The five customers with the highest total order values are:\n\n| Customer Name          | Total Order Value |\n|------------------------|-------------------|\n| Customer#000008362     | 5,793,605.05 |\n| Customer#000006958     | 5,370,682.19 |\n| Customer#000009454     | 5,354,381.81 |\n| Customer#000000346     | 5,323,350.43 |\n| Customer#000010354     | 5,227,957.24 |\n\n**SQL used:**\n\n<sql>\nSELECT\n    c.c_name,\n    SUM(o.o_totalprice) AS total_value\nFROM\n    orders o\nJOIN\n    customer c\n  ON\n    o.o_custkey = c.c_custkey\nGROUP BY\n    c.c_name\nORDER BY\n    total_value DESC\nLIMIT 5;\n</sql>",
-      "accuracy": true,
-      "failure_category": null,
+      "failure_category": "execution_mismatch",
       "error": null,
       "llm_calls": 4,
-      "seconds": 2.877630000002682,
+      "seconds": 3.5646176000591367,
       "agents_used": [
         "schema_agent",
         "sql_agent",
