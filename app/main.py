@@ -31,6 +31,7 @@ st.set_page_config(page_title="AI Analytics Dashboard", layout="wide")
 
 with st.sidebar:
     st.header("Agent pipeline")
+    planner_enabled = st.toggle("Planner", value=True)
     schema_agent_enabled = st.toggle("Schema agent", value=True)
     validator_enabled = st.toggle("Validator agent", value=True)
     insight_agent_enabled = st.toggle("Insight agent", value=True)
@@ -46,52 +47,84 @@ if ask_submitted:
     if not question.strip():
         st.warning("Enter a question about your data.")
     else:
+        pipeline_config = {
+            "planner": planner_enabled,
+            "schema_agent": schema_agent_enabled,
+            "validator": validator_enabled,
+            "insight": insight_agent_enabled,
+            "viz_agent": visualization_agent_enabled,
+            "max_validator_retries": 2,
+            "max_steps": 5,
+        }
+        st.session_state["last_question"] = question.strip()
+        st.session_state["last_pipeline_config"] = pipeline_config
         with st.spinner("Analyzing your question..."):
             st.session_state["sql_agent_result"] = run_pipeline(
                 question.strip(),
-                {
-                    "schema_agent": schema_agent_enabled,
-                    "validator": validator_enabled,
-                    "insight": insight_agent_enabled,
-                    "viz_agent": visualization_agent_enabled,
-                    "max_validator_retries": 2,
-                    "max_steps": 5,
-                },
+                pipeline_config,
             )
-            st.session_state["last_question"] = question.strip()
 
 agent_result = st.session_state.get("sql_agent_result")
 if agent_result:
-    if agent_result["error"]:
-        st.error(agent_result["error"])
-    if agent_result["answer"]:
-        st.markdown(agent_result["answer"])
-    if agent_result.get("insight"):
-        st.markdown("**Insight**")
-        st.markdown(agent_result["insight"])
-    if agent_result.get("sql") and not agent_result.get("error"):
-        if st.button("Pin to dashboard", key="pin_current_answer"):
-            chart_spec = agent_result.get("chart_spec") or {
-                "type": "table",
-                "x": None,
-                "y": None,
-                "color": None,
-                "title": "Query result",
-            }
-            add_pin(
-                st.session_state.get("last_question", ""),
-                agent_result["sql"],
-                chart_spec,
-            )
-            st.success("Pinned to dashboard.")
-    if agent_result["dataframe"] is not None:
-        chart_spec = agent_result.get("chart_spec")
-        chart = render_chart(chart_spec, agent_result["dataframe"]) if chart_spec else None
-        if chart is not None:
-            st.plotly_chart(chart, width="stretch")
-        if not chart_spec or chart_spec.get("type") != "table":
-            st.dataframe(agent_result["dataframe"], width="stretch", hide_index=True)
+    needs_clarification = agent_result.get("needs_clarification", False)
+    if needs_clarification:
+        st.info(agent_result.get("clarifying_question") or "Please clarify your question.")
+        with st.form("clarification_form", clear_on_submit=True):
+            clarification = st.text_input("Your clarification")
+            clarification_submitted = st.form_submit_button("Continue")
+        if clarification_submitted and clarification.strip():
+            original_question = st.session_state.get("last_question", "")
+            clarified_question = f"{original_question}\nClarification: {clarification.strip()}"
+            st.session_state["last_question"] = clarified_question
+            with st.spinner("Replanning with your clarification..."):
+                st.session_state["sql_agent_result"] = run_pipeline(
+                    clarified_question,
+                    st.session_state.get("last_pipeline_config", {}),
+                )
+            st.rerun()
+    else:
+        if agent_result["error"]:
+            st.error(agent_result["error"])
+        if agent_result["answer"]:
+            st.markdown(agent_result["answer"])
+        if agent_result.get("insight"):
+            st.markdown("**Insight**")
+            st.markdown(agent_result["insight"])
+        if agent_result.get("sql") and not agent_result.get("error"):
+            if st.button("Pin to dashboard", key="pin_current_answer"):
+                chart_spec = agent_result.get("chart_spec") or {
+                    "type": "table",
+                    "x": None,
+                    "y": None,
+                    "color": None,
+                    "title": "Query result",
+                }
+                add_pin(
+                    st.session_state.get("last_question", ""),
+                    agent_result["sql"],
+                    chart_spec,
+                )
+                st.success("Pinned to dashboard.")
+        if agent_result["dataframe"] is not None:
+            chart_spec = agent_result.get("chart_spec")
+            chart = render_chart(chart_spec, agent_result["dataframe"]) if chart_spec else None
+            if chart is not None:
+                st.plotly_chart(chart, width="stretch")
+            if not chart_spec or chart_spec.get("type") != "table":
+                st.dataframe(agent_result["dataframe"], width="stretch", hide_index=True)
+
     with st.expander("Show agent steps"):
+        planner_decision = agent_result.get("planner_decision")
+        if planner_decision:
+            st.markdown(
+                f"**Planner decision:** `{planner_decision['category']}` — "
+                f"{planner_decision['reason']}"
+            )
+        st.caption(
+            f"Total: {agent_result.get('total_seconds', 0.0):.2f}s · "
+            f"{agent_result.get('llm_calls', 0)} LLM calls · "
+            f"~{agent_result.get('estimated_tokens', 0)} estimated tokens"
+        )
         for trace in agent_result.get("agents_trace", []):
             st.markdown(
                 f"**{trace['agent_name']}** ({trace['seconds']:.2f}s, "

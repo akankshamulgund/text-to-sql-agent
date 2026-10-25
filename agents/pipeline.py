@@ -1,5 +1,6 @@
 import time
 
+from agents.planner_agent import build_schema_overview, plan
 from agents.schema_agent import get_relevant_schema_with_calls
 from agents.insight_agent import summarize
 from agents.sql_agent import answer_question
@@ -27,6 +28,11 @@ def _result_template():
         "llm_calls": 0,
         "insight": None,
         "chart_spec": None,
+        "needs_clarification": False,
+        "clarifying_question": None,
+        "planner_decision": None,
+        "total_seconds": 0.0,
+        "estimated_tokens": 0,
         "agents_used": [],
         "agents_trace": [],
     }
@@ -35,6 +41,8 @@ def _result_template():
 def run_pipeline(question, config=None):
     """Run the configured schema -> SQL -> validator pipeline."""
     config = config or {}
+    started_pipeline = time.perf_counter()
+    use_planner = bool(config.get("planner", False))
     use_schema = bool(config.get("schema_agent", False))
     use_validator = bool(config.get("validator", False))
     use_insight = bool(config.get("insight", False))
@@ -44,6 +52,40 @@ def run_pipeline(question, config=None):
     result = _result_template()
     schema_summary = None
     schema_calls = 0
+
+    if use_planner:
+        started = time.perf_counter()
+        schema_overview = build_schema_overview()
+        decision = plan(question, schema_overview)
+        result["llm_calls"] += 1
+        result["planner_decision"] = decision
+        result["agents_used"].append("planner_agent")
+        result["agents_trace"].append(
+            _agent_trace(
+                "planner_agent",
+                f"Question: {question[:120]}; schema overview: {len(schema_overview)} characters",
+                f"{decision['category']}: {decision['reason']}",
+                time.perf_counter() - started,
+                1,
+            )
+        )
+        if decision["category"] == "ambiguous":
+            result["needs_clarification"] = True
+            result["clarifying_question"] = decision["clarifying_question"]
+            result["answer"] = decision["clarifying_question"] or "Could you clarify your question?"
+            _finalize_trace(result, question, started_pipeline)
+            return result
+        if decision["category"] == "off_topic":
+            result["answer"] = "I can only answer questions about data in this database. Please ask a question about its tables and fields."
+            _finalize_trace(result, question, started_pipeline)
+            return result
+
+        if decision["reason"] == "Planner output was invalid; using the full pipeline.":
+            use_schema = True
+            use_validator = True
+        else:
+            use_schema = use_schema and decision["use_schema_agent"]
+            use_validator = use_validator and decision["use_validator"]
 
     if use_schema:
         started = time.perf_counter()
@@ -153,4 +195,16 @@ def run_pipeline(question, config=None):
             )
 
     result["agents_used"] = list(dict.fromkeys(result["agents_used"]))
+    _finalize_trace(result, question, started_pipeline)
     return result
+
+
+def _finalize_trace(result, question, started_pipeline):
+    result["total_seconds"] = time.perf_counter() - started_pipeline
+    visible_text = [question, result.get("answer") or "", result.get("sql") or ""]
+    for trace in result["agents_trace"]:
+        visible_text.extend((trace.get("input_summary", ""), trace.get("output_summary", "")))
+    for step in result["steps"]:
+        visible_text.extend((str(step.get("arguments", "")), step.get("result_summary", "")))
+    # This is an approximate display metric, not provider-reported token billing.
+    result["estimated_tokens"] = max(1, sum(len(text) for text in visible_text) // 4)
