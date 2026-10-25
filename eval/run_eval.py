@@ -136,7 +136,7 @@ def _summary(config_name, records):
         "ambiguous_question_count": sum(record.get("planner_category") == "ambiguous" for record in evaluated),
         "routing_categories": {"counts": dict(route_counts), "fractions": route_fractions},
         "average_llm_calls_per_question": sum(record.get("llm_calls", 0) for record in evaluated) / len(evaluated) if evaluated else 0.0,
-        "average_seconds_per_question": sum(record.get("seconds", 0.0) for record in evaluated) / total if total else 0.0,
+        "average_seconds_per_question": sum(record.get("seconds", 0.0) for record in evaluated) / len(evaluated) if evaluated else 0.0,
         "failure_categories": failures,
         "results": records,
     }
@@ -163,11 +163,15 @@ def run(config_name, limit=None, resume=False, delay=2.0):
         current_gold = {item["id"]: item["gold_sql"] for item in questions}
         for record in records:
             if record.get("completed") and record.get("gold_sql") == current_gold.get(record["id"]):
-                actual_frame = _frame_for_sql(record.get("sql"))
-                expected_frame = _frame_for_sql(current_gold[record["id"]])
-                record["accuracy"] = _frames_match(actual_frame, expected_frame)
-                if not record.get("error"):
-                    record["failure_category"] = None if record["accuracy"] else "execution_mismatch"
+                if record.get("planner_category") == "ambiguous":
+                    record["accuracy"] = False
+                    record["failure_category"] = None
+                else:
+                    actual_frame = _frame_for_sql(record.get("sql"))
+                    expected_frame = _frame_for_sql(current_gold[record["id"]])
+                    record["accuracy"] = _frames_match(actual_frame, expected_frame)
+                    if not record.get("error"):
+                        record["failure_category"] = None if record["accuracy"] else "execution_mismatch"
         completed_ids = {
             record["id"] for record in records
             if record.get("completed")

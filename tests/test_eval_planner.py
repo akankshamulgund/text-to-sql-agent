@@ -32,4 +32,5 @@ def test_ambiguous_questions_are_counted_but_not_scored():
     assert summary["routing_categories"]["counts"] == {"ambiguous": 1, "simple": 1}
     assert summary["routing_categories"]["fractions"] == {"ambiguous": 0.5, "simple": 0.5}
     assert summary["average_llm_calls_per_question"] == 2.0
+    assert summary["average_seconds_per_question"] == 2.0
     assert summary["accuracy_by_difficulty"]["easy"]["accuracy"] == 0.0
